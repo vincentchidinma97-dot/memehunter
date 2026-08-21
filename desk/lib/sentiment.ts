@@ -6,12 +6,15 @@
 
 const X_SEARCH = "https://api.x.com/2/tweets/search/recent";
 const LUNAR = "https://lunarcrush.com/api4/public/coins";
+const SORSA = "https://api.sorsa.io/v3";
 
 export type Divergence = "SOCIAL_LEADING" | "PRICE_LEADING" | "NEUTRAL";
 
+export type Influencer = { username: string; followers: number; verified: boolean };
+
 export type Sentiment = {
   available: boolean;
-  source: "x" | "lunarcrush" | "none";
+  source: "x" | "lunarcrush" | "sorsa" | "none";
   score: number;              // 0–25 sub-score folded into the model
   divergence: Divergence;
   posts1h?: number;
@@ -20,6 +23,7 @@ export type Sentiment = {
   authorRatio?: number;       // unique authors / posts (author diversity)
   positivePct?: number;
   manipulated?: boolean;      // anti-shill gate tripped
+  influencers?: Influencer[]; // notable accounts (verified or >10k followers) that mentioned it
   galaxyScore?: number;       // Tier 2 only
   socialVolume?: number;
   note?: string;
@@ -138,15 +142,83 @@ async function lunarSentiment(symbol: string, ch1: number): Promise<Sentiment> {
   };
 }
 
-// ---- router: pick tier by age; fall back to the other if empty ------------
+// ---- Tier 1 (preferred): Sorsa (api.sorsa.io) — cheap Twitter search + crypto influence
+async function sorsaSentiment(symbol: string, address: string, ch1: number): Promise<Sentiment> {
+  const key = process.env.SORSA_API_KEY;
+  if (!key) return { ...EMPTY, note: "no SORSA_API_KEY" };
+
+  let data: any;
+  try {
+    const r = await fetch(`${SORSA}/search-tweets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ApiKey: key },
+      body: JSON.stringify({ query: `($${symbol} OR ${address}) lang:en -filter:retweets`, order: "latest" }),
+    });
+    if (!r.ok) return { ...EMPTY, note: `sorsa ${r.status}` };
+    data = await r.json();
+  } catch (e) { return { ...EMPTY, note: `sorsa error: ${String(e)}` }; }
+
+  const posts: any[] = data.tweets ?? data.results ?? data.data ?? (Array.isArray(data) ? data : []);
+  if (posts.length < 3) return { available: true, source: "sorsa", score: 0, divergence: "NEUTRAL", posts1h: posts.length, note: "too few posts" };
+
+  const now = Date.now();
+  const ts = (p: any) => new Date(p.created_at).getTime();
+  const inLast = (mins: number) => posts.filter((p) => now - ts(p) < mins * 60000).length;
+  const last1h = inLast(60), prev1h = inLast(120) - last1h;
+  const velocity = prev1h > 0 ? last1h / prev1h : last1h > 0 ? 2 : 0;
+
+  const authorOf = (p: any) => p.user?.username ?? p.username ?? "?";
+  const authors = new Set(posts.map(authorOf));
+  const authorRatio = authors.size / posts.length;
+
+  // credible reach + influencer roll-up (verified or >10k followers)
+  const seen = new Map<string, Influencer>();
+  for (const p of posts) {
+    const u = p.user ?? {};
+    const name = u.username ?? p.username;
+    const followers = u.followers_count ?? 0;
+    const verified = !!u.verified;
+    if (name && (verified || followers >= 10_000) && !seen.has(name)) seen.set(name, { username: name, followers, verified });
+  }
+  const influencers = [...seen.values()].sort((a, b) => b.followers - a.followers).slice(0, 5);
+  const credShare = authors.size ? influencers.length / authors.size : 0;
+
+  const texts = posts.map((p) => p.full_text ?? p.text ?? "");
+  const uniqTexts = new Set(texts.map((t) => t.replace(/https?:\/\/\S+/g, "").trim().toLowerCase())).size / texts.length;
+  const manipulated = authorRatio < 0.4 || uniqTexts < 0.4;
+  const pos = polarity(texts);
+
+  let s = 0;
+  s += Math.min(9, velocity >= 2 ? 9 : velocity >= 1.3 ? 6 : velocity >= 1 ? 3 : 0);
+  s += Math.min(6, authorRatio >= 0.7 ? 6 : authorRatio >= 0.5 ? 4 : 2);
+  s += Math.min(5, pos >= 0.6 && pos < 0.95 ? 5 : pos >= 0.5 ? 3 : 0);
+  s += Math.min(5, influencers.length >= 2 ? 5 : influencers.length === 1 ? 3 : credShare > 0 ? 1 : 0);
+  if (manipulated) s = Math.round(s * 0.3);
+
+  const socialHot = velocity >= 1.5 && !manipulated;
+  return {
+    available: true, source: "sorsa", score: Math.round(s), divergence: divergence(socialHot, ch1),
+    posts1h: last1h, velocity: Math.round(velocity * 100) / 100,
+    uniqueAuthors: authors.size, authorRatio: Math.round(authorRatio * 100) / 100,
+    positivePct: Math.round(pos * 100), manipulated, influencers,
+  };
+}
+
+// ---- router: try providers in preference order, return first with data -----
 export async function fetchSentiment(
   symbol: string, address: string, ageHours: number, ch1: number
 ): Promise<Sentiment> {
-  const fresh = ageHours < 24;
-  const primary = fresh ? xSentiment(symbol, address, ch1) : lunarSentiment(symbol, ch1);
-  const r = await primary;
-  if (r.available) return r;
-  // fallback to the other source if the primary had no key / no data
-  const alt = fresh ? await lunarSentiment(symbol, ch1) : await xSentiment(symbol, address, ch1);
-  return alt.available ? alt : r;
+  // Sorsa is preferred (cheap, crypto-Twitter-native, sees fresh coins).
+  const providers = [
+    () => sorsaSentiment(symbol, address, ch1),
+    () => xSentiment(symbol, address, ch1),
+    () => lunarSentiment(symbol, ch1),
+  ];
+  let last: Sentiment = EMPTY;
+  for (const p of providers) {
+    const r = await p();
+    if (r.available) return r;
+    last = r;
+  }
+  return last;
 }

@@ -122,6 +122,11 @@ export default async function Dashboard() {
                 {flag ? <><span className="warn">⚠ {flag}</span><br /></> : <>ins {c.forensics?.insider_pct ?? 0}%<br /></>}
                 <ConsensusChip c={c.consensus} />
                 <span className="sent-pill" style={{ color: sentCol, background: sent != null && sent >= 8 ? "rgba(79,208,138,.1)" : "#0c1017" }}>sent {sent != null ? `+${sent}/25` : "—"}</span>
+                {(c.sentiment?.influencers?.length ?? 0) > 0 && (
+                  <span className="infl" title={c.sentiment.influencers.map((i: any) => `@${i.username} (${Math.round(i.followers / 1000)}k)`).join(", ")}>
+                    <i>★</i> {c.sentiment.influencers.length} KOL
+                  </span>
+                )}
               </div>
               <BuyButton address={c.address} symbol={c.symbol} blocked={blocked} />
             </div>
