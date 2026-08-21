@@ -37,7 +37,7 @@ export default async function Dashboard() {
     <main>
       <header className="top">
         <div className="brand">
-          <svg className="mark" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+          <svg className="mark" width="38" height="38" viewBox="0 0 40 40" fill="none" aria-hidden="true">
             <path d="M20 2 L35 11 V29 L20 38 L5 29 V11 Z" stroke="#2c3448" strokeWidth="1.5" fill="#141a26" />
             <circle cx="20" cy="20" r="10" stroke="var(--gold)" strokeWidth="1.6" fill="none" opacity="0.5" />
             <circle cx="20" cy="20" r="5.5" stroke="var(--gold)" strokeWidth="1.6" fill="none" />
@@ -113,7 +113,7 @@ export default async function Dashboard() {
         <div>
           <div className="shead"><h2>Open positions</h2><span className="hint">flip ladder live</span></div>
           {(positions ?? []).map((p) => {
-            const cur = p.peak_mcap ?? p.entry_mcap;
+            const cur = p.current_mcap ?? p.peak_mcap ?? p.entry_mcap;
             const pnl = p.size_usd * (cur / p.entry_mcap - 1);
             const gain = (cur / p.entry_mcap - 1) * 100;
             const posPct = (m: number) => Math.min(100, ((m / p.entry_mcap) / 4) * 100);
@@ -138,7 +138,7 @@ export default async function Dashboard() {
         <div>
           <div className="shead"><h2>Closed flips</h2><span className="hint">R = risk multiple</span></div>
           {(closed ?? []).map((p) => {
-            const r = p.realized_pnl / (p.size_usd * 0.5);
+            const r = p.realized_pnl / (p.size_usd * (1 - (cfg?.stop_mult ?? 0.5)));
             return (
               <div className="closed" key={p.id}>
                 <div><span className="s">{p.symbol}</span><small>{(p.close_reason ?? "").toUpperCase()} · {usd(p.entry_mcap)} → {usd(p.peak_mcap)}</small></div>

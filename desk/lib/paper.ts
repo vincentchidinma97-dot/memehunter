@@ -1,11 +1,12 @@
 // Paper-trading engine: open simulated positions and resolve them against
 // live market cap using the frozen flip ladder. No real orders anywhere.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchPrices } from "./scan";
 
 type Config = {
   starting_bank: number; risk_per_trade: number; min_score: number; block_veto: boolean;
   auto_paper_buy: boolean; tp1_mult: number; tp1_sell_pct: number; tp2_mult: number;
-  tp2_sell_pct: number; stop_mult: number; stale_hours: number;
+  tp2_sell_pct: number; stop_mult: number; stale_hours: number; max_open_positions: number;
 };
 
 export async function getConfig(db: SupabaseClient): Promise<Config> {
@@ -29,7 +30,7 @@ export async function openPosition(
     address: c.address, symbol: c.symbol, size_usd: size,
     entry_mcap: c.mcap, entry_price: c.price, entry_score: c.score, entry_verdict: c.verdict,
     tp1_mcap: c.mcap * cfg.tp1_mult, tp2_mcap: c.mcap * cfg.tp2_mult, stop_mcap: c.mcap * cfg.stop_mult,
-    peak_mcap: c.mcap,
+    peak_mcap: c.mcap, current_mcap: c.mcap, current_price: c.price,
   }).select("id").single();
   if (error) return { ok: false, reason: error.message };
 
@@ -40,29 +41,34 @@ export async function openPosition(
   return { ok: true, id: pos!.id };
 }
 
-// Re-price every open position against the freshest candidate mcap and fire
-// the flip ladder. Called by the cron job after each scan.
+// Re-price every open position against LIVE DexScreener data (not the scan
+// feed, which may not include a held token) and fire the flip ladder.
 export async function markToMarket(db: SupabaseClient): Promise<{ actions: string[] }> {
   const cfg = await getConfig(db);
   const actions: string[] = [];
   const { data: open } = await db.from("positions").select("*").in("status", ["open", "half"]);
   if (!open?.length) return { actions };
 
+  // Price all held tokens directly from DexScreener in one batched call.
+  const live = await fetchPrices("solana", [...new Set(open.map((p) => p.address))]);
+
   for (const p of open) {
-    const { data: c } = await db.from("candidates").select("mcap, price").eq("address", p.address).single();
-    if (!c?.mcap) continue;
-    const mcap = c.mcap;
+    const l = live[p.address];
+    // Fall back to the last-known current price if DexScreener has no pair now.
+    const mcap = l?.mcap || p.current_mcap || p.entry_mcap;
+    const price = l?.price ?? p.current_price ?? p.entry_price;
     const peak = Math.max(p.peak_mcap ?? p.entry_mcap, mcap);
-    if (peak !== p.peak_mcap) await db.from("positions").update({ peak_mcap: peak }).eq("id", p.id);
+    // Always persist the live current price so the dashboard shows the truth.
+    await db.from("positions").update({ current_mcap: mcap, current_price: price, peak_mcap: peak }).eq("id", p.id);
 
     // initial risk = size * (1 - stop_mult); used to normalize R.
     const risk = p.size_usd * (1 - cfg.stop_mult);
     const gain = (m: number) => (m / p.entry_mcap) - 1; // fractional return at mcap m
 
     // stop first (protect capital)
-    if (mcap <= p.stop_mcap && p.status !== "closed") {
+    if (mcap <= p.stop_mcap) {
       const pnl = p.size_usd * (p.remaining_pct / 100) * gain(mcap);
-      await sell(db, p, p.remaining_pct, "stop", mcap, c.price, pnl, pnl / risk);
+      await sell(db, p, p.remaining_pct, "stop", mcap, price, pnl, pnl / risk);
       await db.from("positions").update({ status: "closed", remaining_pct: 0, closed_at: new Date().toISOString(), close_reason: "stop" }).eq("id", p.id);
       actions.push(`${p.symbol}: STOP hit, closed`);
       continue;
@@ -71,7 +77,7 @@ export async function markToMarket(db: SupabaseClient): Promise<{ actions: strin
     if (p.status === "half" && mcap >= p.tp2_mcap) {
       const pnl = p.size_usd * (cfg.tp2_sell_pct / 100) * gain(mcap);
       const remain = p.remaining_pct - cfg.tp2_sell_pct;
-      await sell(db, p, cfg.tp2_sell_pct, "tp2", mcap, c.price, pnl, pnl / risk);
+      await sell(db, p, cfg.tp2_sell_pct, "tp2", mcap, price, pnl, pnl / risk);
       await db.from("positions").update({ remaining_pct: remain }).eq("id", p.id);
       actions.push(`${p.symbol}: TP2 (4x), sold ${cfg.tp2_sell_pct}%`);
       continue;
@@ -79,7 +85,7 @@ export async function markToMarket(db: SupabaseClient): Promise<{ actions: strin
     // tp1
     if (p.status === "open" && mcap >= p.tp1_mcap) {
       const pnl = p.size_usd * (cfg.tp1_sell_pct / 100) * gain(mcap);
-      await sell(db, p, cfg.tp1_sell_pct, "tp1", mcap, c.price, pnl, pnl / risk);
+      await sell(db, p, cfg.tp1_sell_pct, "tp1", mcap, price, pnl, pnl / risk);
       await db.from("positions").update({ status: "half", remaining_pct: p.remaining_pct - cfg.tp1_sell_pct }).eq("id", p.id);
       actions.push(`${p.symbol}: TP1 (2x), sold ${cfg.tp1_sell_pct}% — principal recovered`);
       continue;
@@ -88,7 +94,7 @@ export async function markToMarket(db: SupabaseClient): Promise<{ actions: strin
     const ageH = (Date.now() - new Date(p.opened_at).getTime()) / 3.6e6;
     if (ageH >= cfg.stale_hours) {
       const pnl = p.size_usd * (p.remaining_pct / 100) * gain(mcap);
-      await sell(db, p, p.remaining_pct, "stale", mcap, c.price, pnl, pnl / risk);
+      await sell(db, p, p.remaining_pct, "stale", mcap, price, pnl, pnl / risk);
       await db.from("positions").update({ status: "closed", remaining_pct: 0, closed_at: new Date().toISOString(), close_reason: "stale" }).eq("id", p.id);
       actions.push(`${p.symbol}: stale >${cfg.stale_hours}h, flipped out`);
     }

@@ -45,6 +45,8 @@ create table if not exists positions (
   stop_mcap      numeric not null,               -- -50% -> exit remainder
   realized_pnl   numeric not null default 0,
   peak_mcap      numeric,
+  current_mcap   numeric,                        -- live mcap from last mark-to-market
+  current_price  numeric,
   opened_at      timestamptz not null default now(),
   closed_at      timestamptz,
   close_reason   text                            -- tp1|tp2|stop|manual|stale
@@ -75,6 +77,7 @@ create table if not exists desk_config (
   min_score      numeric not null default 75,
   block_veto     boolean not null default true,
   auto_paper_buy boolean not null default true,   -- if true, cron opens positions on PASS >= min_score
+  max_open_positions int not null default 20,     -- cap concurrent autonomous positions
   tp1_mult       numeric not null default 2.0,
   tp1_sell_pct   numeric not null default 50,
   tp2_mult       numeric not null default 4.0,

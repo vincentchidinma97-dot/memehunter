@@ -49,10 +49,14 @@ export async function GET(req: Request) {
   });
   await db.from("candidates").upsert(rows, { onConflict: "address" });
 
-  // 4. optional auto paper-buy of fresh PASS candidates above threshold
+  // 4. optional auto paper-buy of fresh PASS candidates above threshold,
+  //    capped at max_open_positions so autonomous mode can't run away.
   const opened: string[] = [];
   if (cfg.auto_paper_buy) {
-    for (let i = 0; i < TOP; i++) {
+    const { count: openCount } = await db.from("positions")
+      .select("id", { count: "exact", head: true }).in("status", ["open", "half"]);
+    let slots = (cfg.max_open_positions ?? 20) - (openCount ?? 0);
+    for (let i = 0; i < TOP && slots > 0; i++) {
       const f = forensics[i];
       const finalScore = top[i].breakdown.total + (sentiments[i]?.score ?? 0);
       if (f?.verdict === "PASS" && finalScore >= cfg.min_score) {
@@ -61,7 +65,7 @@ export async function GET(req: Request) {
           .select("id").eq("address", top[i].address).in("status", ["open", "half"]).maybeSingle();
         if (!existing) {
           const r = await openPosition(db, top[i].address);
-          if (r.ok) opened.push(top[i].symbol);
+          if (r.ok) { opened.push(top[i].symbol); slots--; }
         }
       }
     }

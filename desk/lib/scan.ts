@@ -63,6 +63,21 @@ export async function fetchPairs(chain: string, addrs: string[]): Promise<any[]>
   return [...best.values()];
 }
 
+// Fetch live mcap+price for specific token addresses (used by mark-to-market
+// so held positions are priced from DexScreener directly, not the scan feed).
+export async function fetchPrices(
+  chain: string, addrs: string[]
+): Promise<Record<string, { mcap: number; price: number }>> {
+  const out: Record<string, { mcap: number; price: number }> = {};
+  if (!addrs.length) return out;
+  const pairs = await fetchPairs(chain, addrs);
+  for (const p of pairs) {
+    const a = p.baseToken?.address;
+    if (a) out[a] = { mcap: p.marketCap ?? p.fdv ?? 0, price: Number(p.priceUsd ?? 0) };
+  }
+  return out;
+}
+
 // ---- scoring: on-chain factors sum to 75; sentiment (25) added later ------
 export function scorePair(p: any): Breakdown {
   const liq = p._liq ?? 0;

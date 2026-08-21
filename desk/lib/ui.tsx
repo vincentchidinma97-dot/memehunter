@@ -14,7 +14,7 @@ export function Gauge({ score }: { score: number }) {
   const pct = Math.max(0, Math.min(100, score)) / 100;
   const col = score >= 85 ? "var(--mint)" : score >= 70 ? "var(--amber)" : "var(--muted)";
   return (
-    <svg className="gauge" viewBox="0 0 46 46" role="img" aria-label={`score ${score}`}>
+    <svg className="gauge" width="46" height="46" viewBox="0 0 46 46" role="img" aria-label={`score ${score}`}>
       <circle cx="23" cy="23" r={R} fill="none" stroke="#1a2130" strokeWidth="4" />
       <circle cx="23" cy="23" r={R} fill="none" stroke={col} strokeWidth="4" strokeLinecap="round"
         strokeDasharray={`${(C * pct).toFixed(1)} ${C.toFixed(1)}`} transform="rotate(-90 23 23)" />
@@ -27,7 +27,9 @@ export function Gauge({ score }: { score: number }) {
 // Sparkline from the three real price-change points: 24h→6h→1h→now.
 export function Spark({ price, ch1, ch6, ch24 }: { price: number; ch1: number; ch6: number; ch24: number }) {
   const now = price || 1;
-  const pts = [now / (1 + ch24 / 100), now / (1 + ch6 / 100), now / (1 + ch1 / 100), now];
+  // reconstruct past price = now / (1 + ch%); guard divisor for ch <= -100%
+  const past = (ch: number) => { const d = 1 + ch / 100; return d > 0.01 ? now / d : now; };
+  const pts = [past(ch24), past(ch6), past(ch1), now];
   const mn = Math.min(...pts), mx = Math.max(...pts);
   const norm = pts.map((v) => (v - mn) / ((mx - mn) || 1));
   const w = 100, h = 34, step = w / (norm.length - 1);
