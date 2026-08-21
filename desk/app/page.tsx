@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { admin } from "@/lib/db";
 import { BuyButton } from "./buy-button";
 import { LiveClock } from "./live-clock";
-import { usd, Gauge, Spark, Meter, Ch, Equity, Divergence } from "@/lib/ui";
+import { usd, Avatar, Gauge, Spark, Meter, Ch, Equity, Divergence } from "@/lib/ui";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -32,9 +32,19 @@ export default async function Dashboard() {
   const minScore = cfg?.min_score ?? 75;
   const openRisk = (positions ?? []).reduce((s, p) => s + p.size_usd * (p.remaining_pct / 100), 0);
   const closedPnls = (closed ?? []).map((p) => p.realized_pnl).reverse();
+  // live market ticker built from the scanned candidates' 24h moves
+  const ticker = (cands ?? []).slice(0, 12).map((c) => ({ sym: c.symbol as string, ch: (c.ch24 ?? 0) as number }));
 
   return (
-    <main>
+    <>
+      <div className="ticker">
+        <div className="ticker-track mono">
+          {[...ticker, ...ticker].map((t, i) => (
+            <span className="tk" key={i}><b>{t.sym}</b><span className={t.ch >= 0 ? "up" : "dn"}>{t.ch >= 0 ? "+" : ""}{Math.round(t.ch)}%</span></span>
+          ))}
+        </div>
+      </div>
+      <main>
       <header className="top">
         <div className="brand">
           <svg className="mark" width="38" height="38" viewBox="0 0 40 40" fill="none" aria-hidden="true">
@@ -44,7 +54,7 @@ export default async function Dashboard() {
             <circle cx="20" cy="20" r="1.8" fill="var(--gold)" />
           </svg>
           <div>
-            <h1>Meme Hunter <span className="gold">·</span> paper desk</h1>
+            <h1>Meme Hunter <span className="gold">paper desk</span></h1>
             <p className="sub">solana · scan every 30 min · simulated fills · not financial advice</p>
           </div>
         </div>
@@ -55,37 +65,44 @@ export default async function Dashboard() {
       </header>
 
       <section className="hero">
-        <div className="card pnl-card">
-          <div className="stat-l">Paper P&amp;L</div>
-          <div className={`stat-v ${realized >= 0 ? "good" : "bad"}`}>{realized >= 0 ? "+" : ""}{usd(realized)}</div>
-          <div className="stat-s">on {usd(bank)} starting bank</div>
-          <Equity startBank={bank} closedPnls={closedPnls} />
-        </div>
-        <div className="card">
-          <div className="stat-l">Win rate</div>
-          <div className="stat-v">{sells?.length ? `${Math.round((wins / sells.length) * 100)}%` : "—"}</div>
-          <div className="stat-s">{wins} of {sells?.length ?? 0} sells</div>
-        </div>
-        <div className="card">
-          <div className="stat-l">Expectancy</div>
-          <div className={`stat-v ${avgR >= 0 ? "good" : "bad"}`}>{avgR >= 0 ? "+" : ""}{avgR.toFixed(2)}R</div>
-          <div className="stat-s">per fill · the real edge</div>
-        </div>
-        <div className="card">
-          <div className="stat-l">Open risk</div>
-          <div className="stat-v">{positions?.length ?? 0}</div>
-          <div className="stat-s">{usd(openRisk)} live · {((openRisk / bank) * 100).toFixed(1)}% of bank</div>
+        <div className="hero-glow" />
+        <Equity startBank={bank} closedPnls={closedPnls} hero />
+        <div className="hero-inner">
+          <div className="hcell big">
+            <div className="stat-l">Paper P&amp;L</div>
+            <div className={`stat-v ${realized >= 0 ? "good" : "bad"}`}>{realized >= 0 ? "+" : ""}{usd(realized)}</div>
+            <div className="stat-s">on {usd(bank)} starting bank</div>
+          </div>
+          <div className="hcell">
+            <div className="stat-l">Win rate</div>
+            <div className="stat-v mid">{sells?.length ? `${Math.round((wins / sells.length) * 100)}%` : "—"}</div>
+            <div className="stat-s">{wins} of {sells?.length ?? 0} sells</div>
+          </div>
+          <div className="hcell">
+            <div className="stat-l">Expectancy</div>
+            <div className={`stat-v mid ${avgR >= 0 ? "good" : "bad"}`}>{avgR >= 0 ? "+" : ""}{avgR.toFixed(2)}R</div>
+            <div className="stat-s">per fill · the edge</div>
+          </div>
+          <div className="hcell">
+            <div className="stat-l">Open risk</div>
+            <div className="stat-v mid">{positions?.length ?? 0}</div>
+            <div className="stat-s">{usd(openRisk)} · {((openRisk / bank) * 100).toFixed(1)}% of bank</div>
+          </div>
         </div>
       </section>
 
-      <div className="shead"><h2>Candidate feed</h2><span className="hint">scored 0–100 · forensics on top scorers · sorted by score</span></div>
+      <div className="shead"><h2><span className="bar" />Candidate feed</h2><span className="hint">score · forensics · sentiment · sorted by score</span></div>
       <div className="feed">
         {(cands ?? []).map((c) => {
           const blocked = c.verdict === "VETO" || c.score < minScore;
           const age = c.age_hours < 48 ? `${Math.round(c.age_hours)}h` : `${Math.round(c.age_hours / 24)}d`;
           const flag = (c.forensics?.flags ?? [])[0];
+          const hot = c.sentiment?.divergence === "SOCIAL_LEADING" && !blocked;
+          const sent = c.sentiment?.score;
+          const sentCol = sent == null ? "var(--muted)" : sent >= 15 ? "var(--mint)" : sent >= 8 ? "var(--amber)" : "var(--muted)";
           return (
-            <div className={`row ${blocked ? "blocked" : ""}`} key={c.address}>
+            <div className={`row ${blocked ? "blocked" : ""} ${hot ? "hot" : ""}`} key={c.address}>
+              <Avatar symbol={c.symbol} />
               <Gauge score={c.score} />
               <div className="sym"><span className="n">{c.symbol}</span><span className="meta">{usd(c.mcap)} · {age} old</span></div>
               <div className="spark-cell">
@@ -101,7 +118,10 @@ export default async function Dashboard() {
                 {c.forensics?.top10_pct != null && <div className="frow"><span className="lab">top10</span><Meter pct={c.forensics.top10_pct} kind="conc" /><span>{c.forensics.top10_pct}%</span></div>}
                 {c.forensics?.lp_locked_pct != null && <div className="frow"><span className="lab">LP</span><Meter pct={c.forensics.lp_locked_pct} kind="lp" /><span>{c.forensics.lp_locked_pct}%</span></div>}
               </div>
-              <div className="flag">{flag ? <span className="warn">⚠ {flag}</span> : <>ins {c.forensics?.insider_pct ?? 0}%<br />vol {usd(c.vol24)}</>}</div>
+              <div className="sidecol">
+                {flag ? <><span className="warn">⚠ {flag}</span><br /></> : <>ins {c.forensics?.insider_pct ?? 0}%<br /></>}
+                <span className="sent-pill" style={{ color: sentCol, background: sent != null && sent >= 8 ? "rgba(79,208,138,.1)" : "#0c1017" }}>sent {sent != null ? `+${sent}/25` : "—"}</span>
+              </div>
               <BuyButton address={c.address} symbol={c.symbol} blocked={blocked} />
             </div>
           );
@@ -111,7 +131,7 @@ export default async function Dashboard() {
 
       <div className="cols">
         <div>
-          <div className="shead"><h2>Open positions</h2><span className="hint">flip ladder live</span></div>
+          <div className="shead"><h2><span className="bar" />Open positions</h2><span className="hint">flip ladder live</span></div>
           {(positions ?? []).map((p) => {
             const cur = p.current_mcap ?? p.peak_mcap ?? p.entry_mcap;
             const pnl = p.size_usd * (cur / p.entry_mcap - 1);
@@ -120,7 +140,7 @@ export default async function Dashboard() {
             const nowPct = posPct(cur);
             return (
               <div className="pos" key={p.id}>
-                <div className="posh"><span className="n">{p.symbol}{p.status === "half" && <em>half sold</em>}</span>
+                <div className="posh"><span className="left"><Avatar symbol={p.symbol} /><span className="n">{p.symbol}{p.status === "half" && <em>half sold</em>}</span></span>
                   <span className={`pnl ${pnl >= 0 ? "good" : "bad"}`}>{pnl >= 0 ? "+" : ""}{usd(pnl)}</span></div>
                 <div className="posmeta">in {usd(p.size_usd)} @ {usd(p.entry_mcap)} · now {usd(cur)} ({gain >= 0 ? "+" : ""}{gain.toFixed(0)}%)</div>
                 <div className="ladder">
@@ -136,12 +156,12 @@ export default async function Dashboard() {
           {!positions?.length && <p className="empty">No open positions. Paper-buy a PASS candidate.</p>}
         </div>
         <div>
-          <div className="shead"><h2>Closed flips</h2><span className="hint">R = risk multiple</span></div>
+          <div className="shead"><h2><span className="bar" />Closed flips</h2><span className="hint">R = risk multiple</span></div>
           {(closed ?? []).map((p) => {
             const r = p.realized_pnl / (p.size_usd * (1 - (cfg?.stop_mult ?? 0.5)));
             return (
               <div className="closed" key={p.id}>
-                <div><span className="s">{p.symbol}</span><small>{(p.close_reason ?? "").toUpperCase()} · {usd(p.entry_mcap)} → {usd(p.peak_mcap)}</small></div>
+                <div className="left"><Avatar symbol={p.symbol} /><div><span className="s">{p.symbol}</span><small>{(p.close_reason ?? "").toUpperCase()} · {usd(p.entry_mcap)} → {usd(p.peak_mcap)}</small></div></div>
                 <div className="right">
                   <span className={`amt ${p.realized_pnl >= 0 ? "good" : "bad"}`}>{p.realized_pnl >= 0 ? "+" : ""}{usd(p.realized_pnl)}</span>
                   <span className={`rbadge ${r >= 0 ? "good" : "bad"}`} style={{ background: r >= 0 ? "var(--mint-glow)" : "var(--coral-glow)" }}>{r >= 0 ? "+" : ""}{r.toFixed(1)}R</span>
@@ -153,5 +173,6 @@ export default async function Dashboard() {
         </div>
       </div>
     </main>
+    </>
   );
 }

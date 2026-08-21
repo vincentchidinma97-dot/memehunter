@@ -9,17 +9,30 @@ export function usd(n: number): string {
   return `${s}$${a.toFixed(0)}`;
 }
 
+// Deterministic gradient avatar disc from a ticker (gives each row identity).
+export function Avatar({ symbol }: { symbol: string }) {
+  let h = 0;
+  for (let i = 0; i < symbol.length; i++) h = symbol.charCodeAt(i) + ((h << 5) - h);
+  const hue = Math.abs(h) % 360;
+  return (
+    <div className="avatar" style={{ background: `linear-gradient(135deg, hsl(${hue} 85% 62%), hsl(${(hue + 40) % 360} 85% 48%))` }}>
+      {(symbol[0] ?? "?").toUpperCase()}
+    </div>
+  );
+}
+
 export function Gauge({ score }: { score: number }) {
-  const R = 18, C = 2 * Math.PI * R;
+  const R = 19, C = 2 * Math.PI * R;
   const pct = Math.max(0, Math.min(100, score)) / 100;
   const col = score >= 85 ? "var(--mint)" : score >= 70 ? "var(--amber)" : "var(--muted)";
   return (
-    <svg className="gauge" width="46" height="46" viewBox="0 0 46 46" role="img" aria-label={`score ${score}`}>
-      <circle cx="23" cy="23" r={R} fill="none" stroke="#1a2130" strokeWidth="4" />
-      <circle cx="23" cy="23" r={R} fill="none" stroke={col} strokeWidth="4" strokeLinecap="round"
-        strokeDasharray={`${(C * pct).toFixed(1)} ${C.toFixed(1)}`} transform="rotate(-90 23 23)" />
-      <text x="23" y="23" textAnchor="middle" dominantBaseline="central" fill={col}
-        fontFamily="var(--mono)" fontSize="14" fontWeight="700">{Math.round(score)}</text>
+    <svg className="gauge" width="48" height="48" viewBox="0 0 48 48" role="img" aria-label={`score ${score}`}>
+      <circle cx="24" cy="24" r={R} fill="none" stroke="#161d2b" strokeWidth="4.5" />
+      <circle cx="24" cy="24" r={R} fill="none" stroke={col} strokeWidth="4.5" strokeLinecap="round"
+        strokeDasharray={`${(C * pct).toFixed(1)} ${C.toFixed(1)}`} transform="rotate(-90 24 24)"
+        style={{ filter: `drop-shadow(0 0 4px ${col})` }} />
+      <text x="24" y="24" textAnchor="middle" dominantBaseline="central" fill={col}
+        fontFamily="var(--mono)" fontSize="15" fontWeight="800">{Math.round(score)}</text>
     </svg>
   );
 }
@@ -32,13 +45,13 @@ export function Spark({ price, ch1, ch6, ch24 }: { price: number; ch1: number; c
   const pts = [past(ch24), past(ch6), past(ch1), now];
   const mn = Math.min(...pts), mx = Math.max(...pts);
   const norm = pts.map((v) => (v - mn) / ((mx - mn) || 1));
-  const w = 100, h = 34, step = w / (norm.length - 1);
+  const w = 100, h = 36, step = w / (norm.length - 1);
   const d = norm.map((v, i) => `${i ? "L" : "M"}${(i * step).toFixed(1)},${(2 + (1 - v) * (h - 4)).toFixed(1)}`).join(" ");
   const col = ch24 >= 0 ? "var(--mint)" : "var(--coral)";
   return (
-    <svg className="spark" viewBox="0 0 100 34" preserveAspectRatio="none" aria-hidden="true">
-      <path d={`${d} L100,34 L0,34 Z`} fill={col} opacity="0.08" />
-      <path d={d} fill="none" stroke={col} strokeWidth="1.6" />
+    <svg className="spark" viewBox="0 0 100 36" preserveAspectRatio="none" aria-hidden="true">
+      <path d={`${d} L100,36 L0,36 Z`} fill={col} opacity="0.10" />
+      <path d={d} fill="none" stroke={col} strokeWidth="1.8" />
     </svg>
   );
 }
@@ -63,17 +76,19 @@ export function Divergence({ s }: { s: any }) {
   return <span className="diverge d-neutral">social neutral</span>;
 }
 
-export function Equity({ startBank, closedPnls }: { startBank: number; closedPnls: number[] }) {
+// Bank equity curve. `hero` renders it as the full-width backdrop behind the P&L.
+export function Equity({ startBank, closedPnls, hero }: { startBank: number; closedPnls: number[]; hero?: boolean }) {
   let bank = startBank; const pts = [bank];
   for (const p of closedPnls) { bank += p; pts.push(bank); }
-  const mn = Math.min(...pts), mx = Math.max(...pts), w = 320, h = 46, step = w / (pts.length - 1 || 1);
-  const d = pts.map((v, i) => `${i ? "L" : "M"}${(i * step).toFixed(1)},${(h - 2 - ((v - mn) / ((mx - mn) || 1)) * (h - 6)).toFixed(1)}`).join(" ");
+  const w = hero ? 720 : 320, h = hero ? 110 : 46, pad = hero ? 24 : 6;
+  const mn = Math.min(...pts), mx = Math.max(...pts), step = w / (pts.length - 1 || 1);
+  const d = pts.map((v, i) => `${i ? "L" : "M"}${(i * step).toFixed(1)},${(h - 2 - ((v - mn) / ((mx - mn) || 1)) * (h - pad)).toFixed(1)}`).join(" ");
   const up = pts[pts.length - 1] >= pts[0];
   const col = up ? "var(--mint)" : "var(--coral)";
   return (
-    <svg className="equity" viewBox="0 0 320 46" preserveAspectRatio="none" aria-hidden="true">
-      <path d={`${d} L320,46 L0,46 Z`} fill={col} opacity="0.10" />
-      <path d={d} fill="none" stroke={col} strokeWidth="1.6" />
+    <svg className={hero ? "hero-eq" : "equity"} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden="true">
+      <path d={`${d} L${w},${h} L0,${h} Z`} fill={col} opacity={hero ? 0.14 : 0.10} />
+      <path d={d} fill="none" stroke={col} strokeWidth={hero ? 2 : 1.6} style={hero ? { filter: `drop-shadow(0 0 6px ${col})` } : undefined} />
     </svg>
   );
 }
