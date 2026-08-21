@@ -99,7 +99,8 @@ export default async function Dashboard() {
           const flag = (c.forensics?.flags ?? [])[0];
           const hot = c.sentiment?.divergence === "SOCIAL_LEADING" && !blocked;
           const sent = c.sentiment?.score;
-          const sentCol = sent == null ? "var(--muted)" : sent >= 15 ? "var(--mint)" : sent >= 8 ? "var(--amber)" : "var(--muted)";
+          const sentSrc = c.sentiment?.source;
+          const sentCol = sent == null ? "var(--muted)" : sent >= 12 ? "var(--mint)" : sent >= 6 ? "var(--amber)" : "var(--muted)";
           return (
             <div className={`row ${blocked ? "blocked" : ""} ${hot ? "hot" : ""}`} key={c.address}>
               <Avatar symbol={c.symbol} />
@@ -121,7 +122,7 @@ export default async function Dashboard() {
               <div className="sidecol">
                 {flag ? <><span className="warn">⚠ {flag}</span><br /></> : <>ins {c.forensics?.insider_pct ?? 0}%<br /></>}
                 <ConsensusChip c={c.consensus} />
-                <span className="sent-pill" style={{ color: sentCol, background: sent != null && sent >= 8 ? "rgba(79,208,138,.1)" : "#0c1017" }}>sent {sent != null ? `+${sent}/25` : "—"}</span>
+                <span className="sent-pill" title={sentSrc ? `source: ${sentSrc}` : ""} style={{ color: sentCol, background: sent != null && sent >= 6 ? "rgba(79,208,138,.1)" : "#0c1017" }}>sent {sent != null ? `+${sent}` : "—"}{sentSrc === "onchain" ? " ⛓" : sentSrc === "sorsa" ? " 𝕏" : ""}</span>
                 {(c.sentiment?.influencers?.length ?? 0) > 0 && (
                   <span className="infl" title={c.sentiment.influencers.map((i: any) => `@${i.username} (${Math.round(i.followers / 1000)}k)`).join(", ")}>
                     <i>★</i> {c.sentiment.influencers.length} KOL

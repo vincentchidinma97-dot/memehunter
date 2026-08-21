@@ -14,7 +14,7 @@ export type Influencer = { username: string; followers: number; verified: boolea
 
 export type Sentiment = {
   available: boolean;
-  source: "x" | "lunarcrush" | "sorsa" | "none";
+  source: "x" | "lunarcrush" | "sorsa" | "onchain" | "none";
   score: number;              // 0–25 sub-score folded into the model
   divergence: Divergence;
   posts1h?: number;

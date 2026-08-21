@@ -34,7 +34,9 @@ export async function GET(req: Request) {
   const now = new Date().toISOString();
   const rows = candidates.map((c, i) => {
     const f = i < TOP ? forensics[i] : null;
-    const s = i < TOP ? sentiments[i] : null;
+    const sorsa = i < TOP ? sentiments[i] : null;
+    // prefer real Sorsa data; fall back to the free on-chain attention proxy
+    const s = sorsa?.available ? sorsa : c.attention;
     const sentPts = s?.score ?? 0;
     const breakdown = { ...c.breakdown, sentiment: sentPts };
     const finalScore = Math.round((c.breakdown.total + sentPts) * 10) / 10;
@@ -60,9 +62,10 @@ export async function GET(req: Request) {
     let slots = (cfg.max_open_positions ?? 20) - (openCount ?? 0);
     for (let i = 0; i < TOP && slots > 0; i++) {
       const f = forensics[i];
-      const finalScore = top[i].breakdown.total + (sentiments[i]?.score ?? 0);
-      const breakdown = { ...top[i].breakdown, sentiment: sentiments[i]?.score ?? 0 };
-      const con = evaluateConsensus(breakdown, finalScore, cfg.min_score, f?.verdict ?? "UNKNOWN", sentiments[i], cfg.consensus_min ?? 3, top[i].ch24 ?? 0, cfg.max_chase_pct ?? 500);
+      const s = sentiments[i]?.available ? sentiments[i] : top[i].attention;
+      const finalScore = top[i].breakdown.total + (s?.score ?? 0);
+      const breakdown = { ...top[i].breakdown, sentiment: s?.score ?? 0 };
+      const con = evaluateConsensus(breakdown, finalScore, cfg.min_score, f?.verdict ?? "UNKNOWN", s, cfg.consensus_min ?? 3, top[i].ch24 ?? 0, cfg.max_chase_pct ?? 500);
       if (con.passed) {
         // skip if already holding this token
         const { data: existing } = await db.from("positions")

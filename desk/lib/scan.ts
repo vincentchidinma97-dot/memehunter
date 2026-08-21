@@ -1,8 +1,40 @@
 // Meme Hunter scan engine — DexScreener discovery + scoring + RugCheck forensics.
 // Pure functions + fetch; no DB imports so it runs in any runtime (Vercel cron, edge).
 
+import type { Sentiment } from "./sentiment";
+
 const DEX = "https://api.dexscreener.com";
 const RUGCHECK = "https://api.rugcheck.xyz/v1";
+
+// Free on-chain attention proxy from DexScreener txn data. Used as the "social"
+// signal fallback when the Sorsa quota is exhausted — a weaker but real read on
+// whether the crowd is arriving, needing no external API.
+export function onchainAttention(p: any, ch1: number): Sentiment {
+  const tx = p.txns ?? {};
+  const h1 = (tx.h1?.buys ?? 0) + (tx.h1?.sells ?? 0);
+  const h6 = (tx.h6?.buys ?? 0) + (tx.h6?.sells ?? 0);
+  const hourlyAvg6 = h6 / 6;
+  const accel = hourlyAvg6 > 0 ? h1 / hourlyAvg6 : (h1 > 0 ? 2 : 0); // txns this hour vs 6h hourly avg
+  const buys1 = tx.h1?.buys ?? 0, sells1 = tx.h1?.sells ?? 0;
+  const buyRatio1 = buys1 + sells1 ? buys1 / (buys1 + sells1) : 0;
+  const boost = (p.boosts?.active ?? 0) > 0;
+
+  let s = 0;
+  if (accel >= 2) s += 7; else if (accel >= 1.3) s += 4; else if (accel >= 1) s += 2; // activity accelerating
+  if (buyRatio1 >= 0.55 && buyRatio1 <= 0.8) s += 4;                                   // buyers surging (not bot-flooded)
+  if (boost) s += 4;                                                                   // someone paying to promote it
+  s = Math.min(s, 15); // capped below Sorsa's 25 — it's a weaker proxy
+
+  const accelerating = accel >= 1.5;
+  const priceFlat = Math.abs(ch1) < 15;
+  const divergence = accelerating && priceFlat ? "SOCIAL_LEADING"
+    : (ch1 >= 15 && !accelerating ? "PRICE_LEADING" : "NEUTRAL");
+  return {
+    available: true, source: "onchain", score: s, divergence,
+    velocity: Math.round(accel * 100) / 100, manipulated: false,
+    note: "on-chain attention proxy (no social API)",
+  };
+}
 
 export type Breakdown = {
   liquidity: number; volume: number; momentum: number; age: number; traction: number;
@@ -24,6 +56,7 @@ export type Candidate = {
   score: number; breakdown: Breakdown;
   mcap: number; liquidity: number; vol24: number; price: number; ageHours: number;
   ch1: number; ch6: number; ch24: number;
+  attention: Sentiment;   // free on-chain social proxy, used when Sorsa is unavailable
   dexUrl: string;
 };
 
@@ -196,6 +229,7 @@ export async function runScan(chain = "solana", minLiq = 20_000): Promise<Candid
       ch1: p.priceChange?.h1 ?? 0,
       ch6: p.priceChange?.h6 ?? 0,
       ch24: p.priceChange?.h24 ?? 0,
+      attention: onchainAttention(p, p.priceChange?.h1 ?? 0),
       dexUrl: p.url ?? "",
     });
   }
