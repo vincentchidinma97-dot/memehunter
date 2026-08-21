@@ -12,6 +12,7 @@ create table if not exists candidates (
   verdict        text,                       -- PASS | CAUTION | VETO | UNKNOWN
   forensics      jsonb,                      -- top10_pct, insider_pct, lp_locked_pct, flags[]
   sentiment      jsonb,                      -- {source, score, divergence, velocity, authorRatio, positivePct, manipulated}
+  consensus      jsonb,                      -- {legs:[{name,ok}], count, required, passed}
   mcap           numeric,
   liquidity      numeric,
   vol24          numeric,
@@ -78,6 +79,7 @@ create table if not exists desk_config (
   block_veto     boolean not null default true,
   auto_paper_buy boolean not null default true,   -- if true, cron opens positions on PASS >= min_score
   max_open_positions int not null default 20,     -- cap concurrent autonomous positions
+  consensus_min  int not null default 3,          -- min agreeing signals (besides PASS) to auto-buy
   tp1_mult       numeric not null default 2.0,
   tp1_sell_pct   numeric not null default 50,
   tp2_mult       numeric not null default 4.0,

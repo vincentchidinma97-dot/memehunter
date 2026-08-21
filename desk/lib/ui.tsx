@@ -67,6 +67,17 @@ export function Ch({ v }: { v: number }) {
   return <span className={v > 0 ? "pos" : v < 0 ? "neg" : ""}>{v > 0 ? "+" : ""}{Math.round(v)}%</span>;
 }
 
+// Consensus chip: how many independent signals agree. Green when it clears the bar.
+export function ConsensusChip({ c }: { c: any }) {
+  if (!c) return <span className="cons cons-no">no consensus</span>;
+  const okLegs = (c.legs ?? []).filter((l: any) => l.ok).map((l: any) => l.name).join(" · ");
+  return (
+    <span className={`cons ${c.passed ? "cons-yes" : "cons-no"}`} title={okLegs || "no signals"}>
+      {c.passed ? "◆ " : ""}{c.count}/{c.required} signals
+    </span>
+  );
+}
+
 // Divergence badge: the social-vs-price edge. Leading=early, lagging=chase risk.
 export function Divergence({ s }: { s: any }) {
   if (!s?.available) return <span className="diverge d-none">no social</span>;

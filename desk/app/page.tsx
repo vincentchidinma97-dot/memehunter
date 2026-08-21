@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { admin } from "@/lib/db";
 import { BuyButton } from "./buy-button";
 import { LiveClock } from "./live-clock";
-import { usd, Avatar, Gauge, Spark, Meter, Ch, Equity, Divergence } from "@/lib/ui";
+import { usd, Avatar, Gauge, Spark, Meter, Ch, Equity, Divergence, ConsensusChip } from "@/lib/ui";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -120,6 +120,7 @@ export default async function Dashboard() {
               </div>
               <div className="sidecol">
                 {flag ? <><span className="warn">⚠ {flag}</span><br /></> : <>ins {c.forensics?.insider_pct ?? 0}%<br /></>}
+                <ConsensusChip c={c.consensus} />
                 <span className="sent-pill" style={{ color: sentCol, background: sent != null && sent >= 8 ? "rgba(79,208,138,.1)" : "#0c1017" }}>sent {sent != null ? `+${sent}/25` : "—"}</span>
               </div>
               <BuyButton address={c.address} symbol={c.symbol} blocked={blocked} />

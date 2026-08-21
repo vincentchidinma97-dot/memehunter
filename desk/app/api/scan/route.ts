@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { admin } from "@/lib/db";
 import { runScan, safetyReport } from "@/lib/scan";
 import { fetchSentiment } from "@/lib/sentiment";
+import { evaluateConsensus } from "@/lib/consensus";
 import { markToMarket, getConfig, openPosition } from "@/lib/paper";
 
 export const dynamic = "force-dynamic";
@@ -37,11 +38,12 @@ export async function GET(req: Request) {
     const sentPts = s?.score ?? 0;
     const breakdown = { ...c.breakdown, sentiment: sentPts };
     const finalScore = Math.round((c.breakdown.total + sentPts) * 10) / 10;
+    const consensus = evaluateConsensus(breakdown, finalScore, cfg.min_score, f?.verdict ?? "UNKNOWN", s, cfg.consensus_min ?? 3);
     return {
       address: c.address, chain: c.chain, symbol: c.symbol, name: c.name,
       score: finalScore, breakdown,
       verdict: f?.verdict ?? "UNKNOWN", forensics: f ?? null,
-      sentiment: s ?? null,
+      sentiment: s ?? null, consensus,
       mcap: c.mcap, liquidity: c.liquidity, vol24: c.vol24, price: c.price,
       ch1: c.ch1, ch6: c.ch6, ch24: c.ch24,
       age_hours: c.ageHours, dex_url: c.dexUrl, last_scan_at: now,
@@ -59,7 +61,9 @@ export async function GET(req: Request) {
     for (let i = 0; i < TOP && slots > 0; i++) {
       const f = forensics[i];
       const finalScore = top[i].breakdown.total + (sentiments[i]?.score ?? 0);
-      if (f?.verdict === "PASS" && finalScore >= cfg.min_score) {
+      const breakdown = { ...top[i].breakdown, sentiment: sentiments[i]?.score ?? 0 };
+      const con = evaluateConsensus(breakdown, finalScore, cfg.min_score, f?.verdict ?? "UNKNOWN", sentiments[i], cfg.consensus_min ?? 3);
+      if (con.passed) {
         // skip if already holding this token
         const { data: existing } = await db.from("positions")
           .select("id").eq("address", top[i].address).in("status", ["open", "half"]).maybeSingle();
