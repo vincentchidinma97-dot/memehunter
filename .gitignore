@@ -1,0 +1,19 @@
+# dependencies / build
+node_modules/
+.next/
+out/
+dist/
+
+# env & secrets — never commit
+.env
+.env.*
+!.env.example
+
+# vercel
+.vercel/
+
+# logs & os
+*.log
+.DS_Store
+__pycache__/
+*.pyc
