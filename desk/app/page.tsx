@@ -71,7 +71,7 @@ export default async function Dashboard() {
           <div className="hcell big">
             <div className="stat-l">Paper P&amp;L</div>
             <div className={`stat-v ${realized >= 0 ? "good" : "bad"}`}>{realized >= 0 ? "+" : ""}{usd(realized)}</div>
-            <div className="stat-s">on {usd(bank)} starting bank</div>
+            <div className="stat-s">on {usd(bank)} bank · net of fees + slippage</div>
           </div>
           <div className="hcell">
             <div className="stat-l">Win rate</div>
@@ -135,7 +135,9 @@ export default async function Dashboard() {
           <div className="shead"><h2><span className="bar" />Open positions</h2><span className="hint">flip ladder live</span></div>
           {(positions ?? []).map((p) => {
             const cur = p.current_mcap ?? p.peak_mcap ?? p.entry_mcap;
-            const pnl = p.size_usd * (cur / p.entry_mcap - 1);
+            // unrealized PnL net of fees + slippage (as if exiting now, normal not stop)
+            const cost = (cfg?.fee_pct ?? 0.01) + (cfg?.slippage_pct ?? 0.015);
+            const pnl = p.size_usd * ((cur / p.entry_mcap) * (1 - cost) / (1 + cost) - 1);
             const gain = (cur / p.entry_mcap - 1) * 100;
             const posPct = (m: number) => Math.min(100, ((m / p.entry_mcap) / 4) * 100);
             const nowPct = posPct(cur);

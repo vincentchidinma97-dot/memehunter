@@ -86,6 +86,9 @@ create table if not exists desk_config (
   tp2_sell_pct   numeric not null default 25,
   stop_mult      numeric not null default 0.5,
   stale_hours    numeric not null default 8,
+  fee_pct        numeric not null default 0.01,   -- bot + swap fee, per fill
+  slippage_pct   numeric not null default 0.015,  -- base slippage, per fill
+  stop_slippage_pct numeric not null default 0.03,-- extra slippage on panic stop exits
   constraint single_row check (id = 1)
 );
 insert into desk_config (id) values (1) on conflict (id) do nothing;
