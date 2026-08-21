@@ -26,9 +26,9 @@ export function evaluateConsensus(
     { name: "momentum", ok: b.momentum >= 8, live: true },    // trending up (of 15)
     { name: "liquidity", ok: b.liquidity >= 12, live: true }, // healthy depth to exit (of 20)
     {
+      // the real edge: crowd arriving BEFORE price moves, not just any chatter
       name: "social",
-      ok: !!sentiment?.available && (sentiment.score ?? 0) >= 12
-        && !sentiment.manipulated && sentiment.divergence !== "PRICE_LEADING",
+      ok: !!sentiment?.available && sentiment.divergence === "SOCIAL_LEADING" && !sentiment.manipulated,
       live: !!sentiment?.available,
     },
   ];

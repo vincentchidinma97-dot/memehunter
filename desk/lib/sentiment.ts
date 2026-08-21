@@ -178,7 +178,7 @@ async function sorsaSentiment(symbol: string, address: string, ch1: number): Pro
     const name = u.username ?? p.username;
     const followers = u.followers_count ?? 0;
     const verified = !!u.verified;
-    if (name && (verified || followers >= 10_000) && !seen.has(name)) seen.set(name, { username: name, followers, verified });
+    if (name && followers >= 50_000 && !seen.has(name)) seen.set(name, { username: name, followers, verified });
   }
   const influencers = [...seen.values()].sort((a, b) => b.followers - a.followers).slice(0, 5);
   const credShare = authors.size ? influencers.length / authors.size : 0;
