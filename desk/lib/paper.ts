@@ -8,6 +8,7 @@ type Config = {
   auto_paper_buy: boolean; tp1_mult: number; tp1_sell_pct: number; tp2_mult: number;
   tp2_sell_pct: number; stop_mult: number; stale_hours: number; max_open_positions: number;
   consensus_min: number; fee_pct: number; slippage_pct: number; stop_slippage_pct: number;
+  max_chase_pct: number;
 };
 
 export async function getConfig(db: SupabaseClient): Promise<Config> {

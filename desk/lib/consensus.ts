@@ -6,7 +6,7 @@ import type { Breakdown } from "./scan";
 import type { Sentiment } from "./sentiment";
 
 export type Leg = { name: string; ok: boolean; live: boolean };
-export type Consensus = { legs: Leg[]; count: number; required: number; passed: boolean };
+export type Consensus = { legs: Leg[]; count: number; required: number; passed: boolean; late: boolean };
 
 export function evaluateConsensus(
   b: Breakdown,
@@ -15,8 +15,11 @@ export function evaluateConsensus(
   verdict: string,
   sentiment: Sentiment | null,
   required: number,
+  ch24: number,
+  maxChasePct: number,
 ): Consensus {
-  const rugOk = verdict === "PASS"; // mandatory gate — no PASS, no trade
+  const rugOk = verdict === "PASS";        // mandatory: no PASS, no trade
+  const late = ch24 > maxChasePct;         // mandatory: don't chase a token that already ran
   const legs: Leg[] = [
     { name: "score", ok: finalScore >= minScore, live: true },
     { name: "volume", ok: b.volume >= 14, live: true },       // strong real 2-sided flow (of 20)
@@ -30,5 +33,5 @@ export function evaluateConsensus(
     },
   ];
   const count = legs.filter((l) => l.ok).length;
-  return { legs, count, required, passed: rugOk && count >= required };
+  return { legs, count, required, late, passed: rugOk && !late && count >= required };
 }

@@ -38,7 +38,7 @@ export async function GET(req: Request) {
     const sentPts = s?.score ?? 0;
     const breakdown = { ...c.breakdown, sentiment: sentPts };
     const finalScore = Math.round((c.breakdown.total + sentPts) * 10) / 10;
-    const consensus = evaluateConsensus(breakdown, finalScore, cfg.min_score, f?.verdict ?? "UNKNOWN", s, cfg.consensus_min ?? 3);
+    const consensus = evaluateConsensus(breakdown, finalScore, cfg.min_score, f?.verdict ?? "UNKNOWN", s, cfg.consensus_min ?? 3, c.ch24 ?? 0, cfg.max_chase_pct ?? 500);
     return {
       address: c.address, chain: c.chain, symbol: c.symbol, name: c.name,
       score: finalScore, breakdown,
@@ -62,7 +62,7 @@ export async function GET(req: Request) {
       const f = forensics[i];
       const finalScore = top[i].breakdown.total + (sentiments[i]?.score ?? 0);
       const breakdown = { ...top[i].breakdown, sentiment: sentiments[i]?.score ?? 0 };
-      const con = evaluateConsensus(breakdown, finalScore, cfg.min_score, f?.verdict ?? "UNKNOWN", sentiments[i], cfg.consensus_min ?? 3);
+      const con = evaluateConsensus(breakdown, finalScore, cfg.min_score, f?.verdict ?? "UNKNOWN", sentiments[i], cfg.consensus_min ?? 3, top[i].ch24 ?? 0, cfg.max_chase_pct ?? 500);
       if (con.passed) {
         // skip if already holding this token
         const { data: existing } = await db.from("positions")

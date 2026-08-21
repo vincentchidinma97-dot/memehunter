@@ -70,6 +70,7 @@ export function Ch({ v }: { v: number }) {
 // Consensus chip: how many independent signals agree. Green when it clears the bar.
 export function ConsensusChip({ c }: { c: any }) {
   if (!c) return <span className="cons cons-no">no consensus</span>;
+  if (c.late) return <span className="cons cons-no" title="already ran too far — not chasing">✕ too late</span>;
   const okLegs = (c.legs ?? []).filter((l: any) => l.ok).map((l: any) => l.name).join(" · ");
   return (
     <span className={`cons ${c.passed ? "cons-yes" : "cons-no"}`} title={okLegs || "no signals"}>
